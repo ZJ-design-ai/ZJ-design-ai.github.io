@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>辐射安全刷题</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%2317231f'/%3E%3Ctext x='16' y='22' font-size='17' text-anchor='middle' fill='%23f7d878' font-family='sans-serif'%3E辐%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <svg class="svg-sprite" aria-hidden="true">
+      <symbol id="icon-book" viewBox="0 0 24 24">
+        <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z" />
+        <path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20" />
+      </symbol>
+      <symbol id="icon-shuffle" viewBox="0 0 24 24">
+        <path d="M2 6h4l12 12h4" />
+        <path d="M22 6h-4L6 18H2" />
+        <path d="M18 3l4 3-4 3" />
+        <path d="M6 15l-4 3 4 3" />
+      </symbol>
+      <symbol id="icon-clock" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </symbol>
+      <symbol id="icon-refresh" viewBox="0 0 24 24">
+        <path d="M20 11a8 8 0 1 0-2.3 6.2" />
+        <path d="M20 4v7h-7" />
+      </symbol>
+      <symbol id="icon-home" viewBox="0 0 24 24">
+        <path d="M3 11l9-8 9 8" />
+        <path d="M5 10v10h14V10" />
+      </symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24">
+        <path d="M4 12l5 5L20 6" />
+      </symbol>
+      <symbol id="icon-x" viewBox="0 0 24 24">
+        <path d="M5 5l14 14M19 5L5 19" />
+      </symbol>
+      <symbol id="icon-arrow" viewBox="0 0 24 24">
+        <path d="M4 12h16M13 5l7 7-7 7" />
+      </symbol>
+      <symbol id="icon-flag" viewBox="0 0 24 24">
+        <path d="M5 21V4" />
+        <path d="M5 4h12l-2 4 2 4H5" />
+      </symbol>
+      <symbol id="icon-trash" viewBox="0 0 24 24">
+        <path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14" />
+      </symbol>
+      <symbol id="icon-timer" viewBox="0 0 24 24">
+        <path d="M10 3h4" />
+        <circle cx="12" cy="14" r="7" />
+        <path d="M12 11v3l2 2" />
+      </symbol>
+    </svg>
+
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="#" id="homeLink" aria-label="返回首页">
+          <span class="brand-mark">辐</span>
+          <span class="brand-name">辐射安全刷题</span>
+        </a>
+        <div class="topbar-actions">
+          <div class="exam-clock hidden" id="examClock">
+            <svg><use href="#icon-timer"></use></svg>
+            <span id="examClockText">20:00</span>
+          </div>
+          <button class="icon-btn" id="wrongBookBtn" aria-label="错题本" title="错题本">
+            <svg><use href="#icon-flag"></use></svg>
+            <span class="badge" id="wrongBadge">0</span>
+          </button>
+        </div>
+      </div>
+      <div class="hazard-stripe"></div>
+    </header>
+
+    <main>
+      <section class="home" id="homeView">
+        <div class="hero">
+          <div class="hero-copy">
+            <p class="eyebrow">生态环境部辐射源安全监管司 · 2022年1月版</p>
+            <h1>辐射安全考核题库<br />打开就能刷</h1>
+            <p class="hero-note">两套题库共 687 题，支持顺序、随机、模拟考试与错题回顾。</p>
+          </div>
+          <div class="hero-stats">
+            <div><strong id="homeTotal">687</strong><span>总题数</span></div>
+            <div><strong id="homeSingle">443</strong><span>单选题</span></div>
+            <div><strong id="homeMulti">244</strong><span>多选题</span></div>
+          </div>
+        </div>
+
+        <div class="paper-list" id="paperList"></div>
+
+        <div class="chapter-wrap hidden" id="chapterWrap">
+          <div class="chapter-row" id="chapterRow"></div>
+        </div>
+
+        <section class="wrong-panel" id="wrongPanel">
+          <div class="wrong-panel-head">
+            <div>
+              <p class="label">错题本</p>
+              <h2>错题回顾</h2>
+            </div>
+            <span class="wrong-count" id="wrongPanelCount">0 题</span>
+          </div>
+          <div class="wrong-actions">
+            <button class="solid-btn" id="startWrongBtn">
+              <svg><use href="#icon-refresh"></use></svg>
+              <span>开始重练</span>
+            </button>
+            <button class="ghost-btn danger" id="clearWrongBtn">
+              <svg><use href="#icon-trash"></use></svg>
+              <span>清空</span>
+            </button>
+          </div>
+        </section>
+      </section>
+
+      <section class="quiz-view hidden" id="quizView">
+        <div class="quiz-top">
+          <div class="quiz-meta">
+            <span class="paper-tag small" id="quizPaperTag">辐射安全管理</span>
+            <span class="mode-tag" id="quizModeTag">顺序练习</span>
+            <span class="mode-tag part" id="quizPartTag">基础</span>
+            <span class="mode-tag type" id="quizTypeTag">单选题</span>
+          </div>
+          <div class="quiz-progress">
+            <span id="quizCount">1 / 50</span>
+            <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+          </div>
+        </div>
+
+        <article class="question-panel">
+          <div class="question-head">
+            <span class="question-no" id="questionNo">1</span>
+            <h2 id="questionStem"></h2>
+          </div>
+          <div class="question-figures" id="questionFigures"></div>
+          <div class="option-list" id="optionList"></div>
+          <div class="answer-strip hidden" id="answerStrip">
+            <div class="answer-result" id="answerResult"></div>
+            <div class="answer-text" id="answerText"></div>
+          </div>
+        </article>
+
+        <div class="quiz-actions">
+          <button class="ghost-btn" id="prevBtn">
+            <svg class="flip"><use href="#icon-arrow"></use></svg>
+            <span>上一题</span>
+          </button>
+          <div class="quiz-actions-main">
+            <button class="solid-btn accent hidden" id="confirmBtn">
+              <svg><use href="#icon-check"></use></svg>
+              <span>确认答案</span>
+            </button>
+            <button class="solid-btn hidden" id="nextBtn">
+              <span>下一题</span>
+              <svg><use href="#icon-arrow"></use></svg>
+            </button>
+            <button class="solid-btn accent hidden" id="submitBtn">
+              <svg><use href="#icon-flag"></use></svg>
+              <span>交卷</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="result-view hidden" id="resultView">
+        <div class="result-head">
+          <p class="label" id="resultLabel">练习完成</p>
+          <h1 id="resultTitle">成绩单</h1>
+        </div>
+        <div class="score-card">
+          <div class="score-ring" id="scoreRing"><span id="scorePercent">0%</span></div>
+          <div class="score-detail">
+            <div><strong id="scoreCorrect">0</strong><span>答对</span></div>
+            <div><strong id="scoreWrong">0</strong><span>答错</span></div>
+            <div><strong id="scoreTotal">0</strong><span>总题数</span></div>
+            <div><strong id="scoreTime">0:00</strong><span>用时</span></div>
+          </div>
+        </div>
+        <section class="result-wrong" id="resultWrongWrap">
+          <div class="section-title"><h2>错题回顾</h2><span id="resultWrongCount">0 题</span></div>
+          <div class="wrong-list" id="wrongList"></div>
+        </section>
+        <div class="result-actions">
+          <button class="solid-btn" id="retryBtn">
+            <svg><use href="#icon-refresh"></use></svg>
+            <span>再练一次</span>
+          </button>
+          <button class="ghost-btn" id="homeBtn">
+            <svg><use href="#icon-home"></use></svg>
+            <span>返回首页</span>
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>辐射安全考核试题 · 2022年1月版</span>
+      <span>数据来自用户提供的两份 PDF 题库</span>
+    </footer>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="data/questions-rad.js"></script>
+    <script src="data/questions-bank.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
