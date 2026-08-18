@@ -128,7 +128,13 @@
         </div>
         <div class="progress-bars" id="progressBars"></div>
         <div class="session-list-wrap hidden" id="sessionListWrap">
-          <h3>最近练习</h3>
+          <div class="session-list-head">
+            <h3>最近练习</h3>
+            <button class="ghost-btn small hidden" id="resumeLastBtn">
+              <svg><use href="#icon-refresh"></use></svg>
+              <span>继续上次</span>
+            </button>
+          </div>
           <div class="session-list" id="sessionList"></div>
         </div>
       </section>
