@@ -15,12 +15,20 @@ const PAPERS = {
   },
 };
 
-const WRONG_KEY = "radquiz_wrong_v1";
+const WRONG_KEY_BASE = "radquiz_wrong_v1";
+const PROGRESS_KEY_BASE = "radquiz_progress_v2";
+const SESSIONS_KEY_BASE = "radquiz_sessions_v2";
+const USERS_KEY = "radquiz_users_v1";
+const CURRENT_USER_KEY = "radquiz_current_user_v1";
+const GUEST_NAME = "游客";
 const ALL_QUESTIONS = [...window.RAD_QUESTIONS, ...window.BANK_QUESTIONS];
 const QUESTION_MAP = new Map(ALL_QUESTIONS.map((q) => [qid(q), q]));
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
+
+let authMode = "login";
+let currentUserName = localStorage.getItem(CURRENT_USER_KEY) || GUEST_NAME;
 
 let state = {
   paper: "rad",
@@ -38,10 +46,43 @@ let state = {
   examSeconds: 0,
   examTimer: null,
   lastSetup: null,
+  sessionPaper: "辐射安全管理",
+  sessionChapter: "全部",
 };
 
 function qid(q) {
   return `${q.part}-${q.num}`;
+}
+
+function accountKey(name) {
+  return encodeURIComponent(name);
+}
+
+function wrongKey() {
+  return `${WRONG_KEY_BASE}_${accountKey(currentUserName)}`;
+}
+
+function progressKey() {
+  return `${PROGRESS_KEY_BASE}_${accountKey(currentUserName)}`;
+}
+
+function sessionsKey() {
+  return `${SESSIONS_KEY_BASE}_${accountKey(currentUserName)}`;
+}
+
+async function digest(text) {
+  if (window.crypto && crypto.subtle) {
+    const data = new TextEncoder().encode(`radquiz:${text}`);
+    const hash = await crypto.subtle.digest("SHA-256", data);
+    return [...new Uint8Array(hash)]
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+  }
+  return String(hash);
 }
 
 function escapeHtml(value) {
@@ -54,14 +95,14 @@ function escapeHtml(value) {
 
 function loadWrong() {
   try {
-    return JSON.parse(localStorage.getItem(WRONG_KEY)) || [];
+    return JSON.parse(localStorage.getItem(wrongKey())) || [];
   } catch (err) {
     return [];
   }
 }
 
 function saveWrong(ids) {
-  localStorage.setItem(WRONG_KEY, JSON.stringify(ids));
+  localStorage.setItem(wrongKey(), JSON.stringify(ids));
 }
 
 function addWrong(q) {
@@ -82,6 +123,224 @@ function clearWrong() {
 function updateWrongBadge() {
   const count = loadWrong().length;
   $("#wrongBadge").textContent = count;
+}
+
+function loadProgress() {
+  try {
+    return JSON.parse(localStorage.getItem(progressKey())) || {};
+  } catch (err) {
+    return {};
+  }
+}
+
+function saveProgress(map) {
+  localStorage.setItem(progressKey(), JSON.stringify(map));
+}
+
+function loadSessions() {
+  try {
+    return JSON.parse(localStorage.getItem(sessionsKey())) || [];
+  } catch (err) {
+    return [];
+  }
+}
+
+function saveSessions(sessions) {
+  localStorage.setItem(sessionsKey(), JSON.stringify(sessions));
+}
+
+function recordAnswer(q, ok) {
+  const map = loadProgress();
+  const id = qid(q);
+  const entry = map[id] || { attempts: 0, correct: 0, wrong: 0, lastTs: 0 };
+  entry.attempts++;
+  if (ok) entry.correct++;
+  else entry.wrong++;
+  entry.lastTs = Date.now();
+  map[id] = entry;
+  saveProgress(map);
+}
+
+function recordSession({ mode, paper, chapter, total, correct, wrong, duration }) {
+  const sessions = loadSessions();
+  sessions.unshift({
+    mode,
+    paper,
+    chapter,
+    total,
+    correct,
+    wrong,
+    duration,
+    ts: Date.now(),
+  });
+  saveSessions(sessions.slice(0, 30));
+}
+
+function isToday(ts) {
+  const date = new Date(ts);
+  const now = new Date();
+  return (
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  );
+}
+
+function formatDateTime(ts) {
+  const d = new Date(ts);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function loadUsers() {
+  try {
+    return JSON.parse(localStorage.getItem(USERS_KEY)) || {};
+  } catch (err) {
+    return {};
+  }
+}
+
+function saveUsers(users) {
+  localStorage.setItem(USERS_KEY, JSON.stringify(users));
+}
+
+function setCurrentUser(name) {
+  currentUserName = name;
+  if (name === GUEST_NAME) {
+    localStorage.removeItem(CURRENT_USER_KEY);
+  } else {
+    localStorage.setItem(CURRENT_USER_KEY, name);
+  }
+  renderAuthState();
+}
+
+function renderAuthState() {
+  const label = $("#userName");
+  if (label) {
+    label.textContent = currentUserName === GUEST_NAME ? "登录账号" : currentUserName;
+  }
+  const userBtn = $("#userBtn");
+  if (userBtn) {
+    userBtn.classList.toggle("logged", currentUserName !== GUEST_NAME);
+  }
+}
+
+function openAuth(mode = "login") {
+  authMode = mode;
+  $("#authTitle").textContent = mode === "login" ? "登录账号" : "创建账号";
+  $("#authSubmit").textContent = mode === "login" ? "登录" : "创建并登录";
+  $("#authSwitch").textContent =
+    mode === "login" ? "还没有账号？创建一个" : "已有账号？直接登录";
+  $("#authModal").classList.remove("hidden");
+  $("#authName").focus();
+}
+
+function closeAuth() {
+  $("#authModal").classList.add("hidden");
+}
+
+async function submitAuth() {
+  const name = $("#authName").value.trim();
+  const pass = $("#authPass").value;
+  if (!name || !pass) {
+    toast("请填写昵称和密码");
+    return;
+  }
+  const users = loadUsers();
+  const hash = await digest(pass);
+  if (authMode === "login") {
+    if (!users[name] || users[name].hash !== hash) {
+      toast("昵称或密码不正确");
+      return;
+    }
+  } else {
+    if (users[name]) {
+      toast("这个昵称已经存在");
+      return;
+    }
+    users[name] = { hash, createdAt: Date.now() };
+    saveUsers(users);
+  }
+  setCurrentUser(name);
+  $("#authPass").value = "";
+  closeAuth();
+  stopExamTimer();
+  showView("home");
+  renderHome();
+  toast(authMode === "login" ? "登录成功" : "账号创建成功");
+}
+
+function logout() {
+  setCurrentUser(GUEST_NAME);
+  stopExamTimer();
+  showView("home");
+  renderHome();
+  toast("已退出账号");
+}
+
+function clearHistory() {
+  if (!confirm("确定清空这个账号的全部做题记录吗？")) return;
+  localStorage.removeItem(progressKey());
+  localStorage.removeItem(sessionsKey());
+  renderHome();
+  toast("做题记录已清空");
+}
+
+function renderProgress() {
+  const map = loadProgress();
+  const entries = Object.entries(map)
+    .map(([id, e]) => ({ id, ...e }))
+    .filter((e) => e.attempts > 0);
+  const answered = entries.length;
+  const attempts = entries.reduce((sum, e) => sum + e.attempts, 0);
+  const correct = entries.reduce((sum, e) => sum + e.correct, 0);
+  const accuracy = attempts ? Math.round((correct / attempts) * 100) : 0;
+  const today = entries
+    .filter((e) => isToday(e.lastTs))
+    .reduce((sum, e) => sum + e.attempts, 0);
+
+  $("#historyAnswered").textContent = answered;
+  $("#historyCorrect").textContent = correct;
+  $("#historyAccuracy").textContent = `${accuracy}%`;
+  $("#historyToday").textContent = today;
+
+  const papers = [
+    { id: "rad", title: "辐射安全管理", total: window.RAD_QUESTIONS.length },
+    { id: "bank", title: "图片题", total: window.BANK_QUESTIONS.length },
+  ];
+  $("#progressBars").innerHTML = papers
+    .map((paper) => {
+      const done = entries.filter((e) =>
+        paper.id === "bank" ? e.id.startsWith("图片题") : !e.id.startsWith("图片题")
+      ).length;
+      const percent = Math.round((done / paper.total) * 100);
+      return `
+        <div class="progress-bar-row">
+          <div class="progress-bar-label"><span>${paper.title}</span><strong>${done} / ${paper.total}</strong></div>
+          <div class="progress-track"><div class="progress-fill" style="width:${percent}%"></div></div>
+        </div>`;
+    })
+    .join("");
+
+  const sessions = loadSessions();
+  const wrap = $("#sessionListWrap");
+  if (!sessions.length) {
+    wrap.classList.add("hidden");
+    return;
+  }
+  wrap.classList.remove("hidden");
+  $("#sessionList").innerHTML = sessions
+    .map(
+      (s) => `
+      <div class="session-item">
+        <div class="session-main">
+          <strong>${escapeHtml(s.paper)} · ${escapeHtml(s.chapter)}</strong>
+          <span>${escapeHtml(modeName(s.mode))} · ${formatDateTime(s.ts)}</span>
+        </div>
+        <div class="session-score">${s.correct} / ${s.total} · ${formatTime(s.duration)}</div>
+      </div>`
+    )
+    .join("");
 }
 
 function shuffle(arr) {
@@ -124,6 +383,8 @@ function renderHome() {
   renderPaperList();
   renderChapterRow();
   renderWrongPanel();
+  renderProgress();
+  renderAuthState();
   updateWrongBadge();
   const all = ALL_QUESTIONS;
   $("#homeTotal").textContent = all.length;
@@ -241,6 +502,9 @@ function beginSession({ mode, list }) {
   state.startTime = Date.now();
   state.elapsed = 0;
   state.examAnswers = mode === "exam" ? list.map(() => []) : [];
+  state.sessionPaper =
+    mode === "wrong" ? "错题本" : PAPERS[state.paper] ? PAPERS[state.paper].title : "辐射安全管理";
+  state.sessionChapter = mode === "wrong" ? "错题" : state.chapter || "全部";
   showView("quiz");
   if (mode === "exam") {
     startExamTimer();
@@ -250,6 +514,9 @@ function beginSession({ mode, list }) {
 
 function renderQuestion() {
   const q = state.list[state.index];
+  if (state.mode === "wrong") {
+    state.confirmed = true;
+  }
   const total = state.list.length;
   $("#quizCount").textContent = `${state.index + 1} / ${total}`;
   $("#progressFill").style.width = `${((state.index + 1) / total) * 100}%`;
@@ -264,6 +531,9 @@ function renderQuestion() {
   renderOptions(q);
   renderActionButtons();
   $("#answerStrip").classList.add("hidden");
+  if (state.mode === "wrong") {
+    showReviewExplanation(q);
+  }
 }
 
 function renderFigures(q) {
@@ -330,14 +600,51 @@ function selectOption(i) {
   renderActionButtons();
 }
 
+function lettersFor(q, indices) {
+  return indices.map((i) => q.options[i].letter).join("、");
+}
+
+function buildExplanation(q, selected, ok) {
+  if (q.explain) return q.explain;
+  const correct = lettersFor(q, q.answer);
+  const correctText = q.answer
+    .map((i) => q.options[i].text)
+    .filter(Boolean)
+    .join("；");
+  let text = `正确答案为 ${correct}`;
+  if (correctText) {
+    text += `，即“${correctText}”。本题围绕该知识点设置，答题时注意区分相近选项。`;
+  } else {
+    text += `。本题为图片题，请对照正确选项图片理解考点。`;
+  }
+  if (!ok && selected.length) {
+    text += ` 你选择的是 ${lettersFor(q, selected)}，请重点对照正确答案复习本题考点。`;
+  }
+  return text;
+}
+
+function showReviewExplanation(q) {
+  const strip = $("#answerStrip");
+  const result = $("#answerResult");
+  result.textContent = "错题讲解";
+  result.className = "answer-result no";
+  $("#answerText").textContent = `正确答案：${lettersFor(q, q.answer)}`;
+  $("#answerExplain").innerHTML = `<strong>解析</strong><p>${escapeHtml(
+    buildExplanation(q, [], false)
+  )}</p>`;
+  strip.classList.remove("hidden");
+}
+
 function confirmAnswer() {
   const q = state.list[state.index];
   if (!state.selected.length) {
     toast("请先选择答案");
     return;
   }
-  const ok = sameAnswer(state.selected, q.answer);
+  const selected = [...state.selected];
+  const ok = sameAnswer(selected, q.answer);
   state.confirmed = true;
+  recordAnswer(q, ok);
   if (ok) {
     state.correct++;
   } else {
@@ -349,9 +656,10 @@ function confirmAnswer() {
   const result = $("#answerResult");
   result.textContent = ok ? "回答正确" : "回答错误";
   result.className = "answer-result " + (ok ? "ok" : "no");
-  $("#answerText").textContent = `正确答案：${q.answer
-    .map((i) => q.options[i].letter)
-    .join("、")}`;
+  $("#answerText").textContent = `正确答案：${lettersFor(q, q.answer)}`;
+  $("#answerExplain").innerHTML = `<strong>解析</strong><p>${escapeHtml(
+    buildExplanation(q, selected, ok)
+  )}</p>`;
   strip.classList.remove("hidden");
   renderActionButtons();
 }
@@ -388,7 +696,9 @@ function submitExam() {
   let correct = 0;
   const wrong = [];
   state.list.forEach((q, i) => {
-    if (sameAnswer(state.examAnswers[i] || [], q.answer)) {
+    const ok = sameAnswer(state.examAnswers[i] || [], q.answer);
+    recordAnswer(q, ok);
+    if (ok) {
       correct++;
     } else {
       wrong.push(q);
@@ -429,6 +739,15 @@ function showResult(correct, wrong, isExam = false) {
   const elapsed = isExam
     ? state.elapsed
     : Math.round((Date.now() - state.startTime) / 1000);
+  recordSession({
+    mode: state.mode,
+    paper: state.sessionPaper,
+    chapter: state.sessionChapter,
+    total,
+    correct,
+    wrong: wrong.length,
+    duration: elapsed,
+  });
   $("#resultLabel").textContent = isExam ? "模拟考试" : "练习完成";
   $("#resultTitle").textContent = isExam ? "考试成绩单" : "练习成绩单";
   $("#scoreRing").style.setProperty("--score", percent);
@@ -452,7 +771,7 @@ function showResult(correct, wrong, isExam = false) {
   $$("#wrongList .wrong-item").forEach((btn) => {
     btn.addEventListener("click", () => {
       const q = QUESTION_MAP.get(btn.dataset.qid);
-      if (q) beginSession({ mode: "order", list: [q] });
+      if (q) beginSession({ mode: "wrong", list: [q] });
     });
   });
   showView("result");
@@ -540,5 +859,25 @@ $("#wrongBookBtn").addEventListener("click", () => {
   renderHome();
   document.querySelector("#wrongPanel").scrollIntoView({ behavior: "smooth" });
 });
+
+$("#userBtn").addEventListener("click", () => {
+  if (currentUserName !== GUEST_NAME) {
+    if (confirm("退出当前账号吗？")) logout();
+  } else {
+    openAuth("login");
+  }
+});
+$("#authClose").addEventListener("click", closeAuth);
+$("#authModal").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) closeAuth();
+});
+$("#authSwitch").addEventListener("click", () => {
+  openAuth(authMode === "login" ? "register" : "login");
+});
+$("#authSubmit").addEventListener("click", submitAuth);
+$("#authPass").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") submitAuth();
+});
+$("#clearHistoryBtn").addEventListener("click", clearHistory);
 
 renderHome();
