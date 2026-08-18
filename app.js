@@ -604,23 +604,98 @@ function lettersFor(q, indices) {
   return indices.map((i) => q.options[i].letter).join("、");
 }
 
+function realExplanation(q) {
+  const table =
+    q.part === "图片题"
+      ? window.BANK_EXPLAINS || {}
+      : window.RAD_EXPLAINS || {};
+  return table[qid(q)] || null;
+}
+
+function cleanExplainText(text) {
+  return String(text || "")
+    .replace(/\*\*/g, "")
+    .replace(/^#{1,6}\s*/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function buildExplanation(q, selected, ok) {
   if (q.explain) return q.explain;
-  const correct = lettersFor(q, q.answer);
-  const correctText = q.answer
-    .map((i) => q.options[i].text)
-    .filter(Boolean)
-    .join("；");
-  let text = `正确答案为 ${correct}`;
-  if (correctText) {
-    text += `，即“${correctText}”。本题围绕该知识点设置，答题时注意区分相近选项。`;
-  } else {
-    text += `。本题为图片题，请对照正确选项图片理解考点。`;
+  const info = realExplanation(q);
+  let text = "";
+  if (info && info.point) {
+    text += `考点：${cleanExplainText(info.point)}。`;
+  }
+  if (info && info.explain) {
+    text += `解析：${cleanExplainText(info.explain)}`;
+  }
+  if (info && info.point && !info.explain) {
+    text += `本题考查“${cleanExplainText(info.point)}”。正确答案是 ${lettersFor(
+      q,
+      q.answer
+    )}，请结合教材和法规记忆该考点。`;
+  }
+  if (!text) {
+    const correct = lettersFor(q, q.answer);
+    const correctText = q.answer
+      .map((i) => q.options[i].text)
+      .filter(Boolean)
+      .join("；");
+    text = `正确答案为 ${correct}`;
+    if (correctText) {
+      text += `，即“${correctText}”。本题围绕该知识点设置，答题时注意区分相近选项。`;
+    } else {
+      text += `。本题为图片题，请对照正确选项图片理解考点。`;
+    }
   }
   if (!ok && selected.length) {
-    text += ` 你选择的是 ${lettersFor(q, selected)}，请重点对照正确答案复习本题考点。`;
+    text += ` 你选择的是 ${lettersFor(q, selected)}，正确答案是 ${lettersFor(
+      q,
+      q.answer
+    )}，请重点对照正确答案复习。`;
   }
   return text;
+}
+
+function renderExplanation(q, selected, ok) {
+  const info = realExplanation(q);
+  const node = $("#answerExplain");
+  const correct = lettersFor(q, q.answer);
+  const chosen = selected.length ? lettersFor(q, selected) : "";
+  const hint = ok
+    ? `回答正确，正确答案：${correct}。`
+    : chosen
+    ? `你选择的是 ${chosen}，正确答案：${correct}。`
+    : `正确答案：${correct}。`;
+  if (info && (info.point || info.explain)) {
+    const pointHtml = info.point
+      ? `<div class="explain-point"><strong>考点</strong><p>${escapeHtml(
+          cleanExplainText(info.point)
+        )}</p></div>`
+      : "";
+    const explainHtml = info.explain
+      ? `<strong>解析</strong><p>${escapeHtml(
+          cleanExplainText(info.explain)
+        )}</p>`
+      : info.point
+      ? `<strong>解析</strong><p>${escapeHtml(
+          `正确答案是 ${lettersFor(
+            q,
+            q.answer
+          )}。本题考查“${cleanExplainText(
+            info.point
+          )}”，请结合教材和法规记忆该考点。`
+        )}</p>`
+      : "";
+    node.innerHTML = `${pointHtml}${explainHtml}<p class="explain-hint">${escapeHtml(
+      hint
+    )}</p>`;
+  } else {
+    node.innerHTML = `<strong>解析</strong><p>${escapeHtml(
+      buildExplanation(q, selected, ok)
+    )}</p>`;
+  }
 }
 
 function showReviewExplanation(q) {
@@ -629,9 +704,7 @@ function showReviewExplanation(q) {
   result.textContent = "错题讲解";
   result.className = "answer-result no";
   $("#answerText").textContent = `正确答案：${lettersFor(q, q.answer)}`;
-  $("#answerExplain").innerHTML = `<strong>解析</strong><p>${escapeHtml(
-    buildExplanation(q, [], false)
-  )}</p>`;
+  renderExplanation(q, [], false);
   strip.classList.remove("hidden");
 }
 
@@ -657,9 +730,7 @@ function confirmAnswer() {
   result.textContent = ok ? "回答正确" : "回答错误";
   result.className = "answer-result " + (ok ? "ok" : "no");
   $("#answerText").textContent = `正确答案：${lettersFor(q, q.answer)}`;
-  $("#answerExplain").innerHTML = `<strong>解析</strong><p>${escapeHtml(
-    buildExplanation(q, selected, ok)
-  )}</p>`;
+  renderExplanation(q, selected, ok);
   strip.classList.remove("hidden");
   renderActionButtons();
 }
