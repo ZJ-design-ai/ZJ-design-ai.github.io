@@ -52,6 +52,10 @@
         <circle cx="12" cy="14" r="7" />
         <path d="M12 11v3l2 2" />
       </symbol>
+      <symbol id="icon-user" viewBox="0 0 24 24">
+        <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
+        <path d="M4 21c1.2-3.4 4.2-5 8-5s6.8 1.6 8 5" />
+      </symbol>
     </svg>
 
     <header class="topbar">
@@ -61,6 +65,10 @@
           <span class="brand-name">辐射安全刷题</span>
         </a>
         <div class="topbar-actions">
+          <button class="ghost-btn user-btn" id="userBtn">
+            <svg><use href="#icon-user"></use></svg>
+            <span id="userName">登录账号</span>
+          </button>
           <div class="exam-clock hidden" id="examClock">
             <svg><use href="#icon-timer"></use></svg>
             <span id="examClockText">20:00</span>
@@ -82,12 +90,48 @@
             <h1>辐射安全考核题库<br />打开就能刷</h1>
             <p class="hero-note">两套题库共 687 题，支持顺序、随机、模拟考试与错题回顾。</p>
           </div>
-          <div class="hero-stats">
-            <div><strong id="homeTotal">687</strong><span>总题数</span></div>
-            <div><strong id="homeSingle">443</strong><span>单选题</span></div>
-            <div><strong id="homeMulti">244</strong><span>多选题</span></div>
+        <div class="hero-stats">
+          <div><strong id="homeTotal">687</strong><span>总题数</span></div>
+          <div><strong id="homeSingle">443</strong><span>单选题</span></div>
+          <div><strong id="homeMulti">244</strong><span>多选题</span></div>
+        </div>
+      </div>
+
+      <section class="progress-panel" id="progressPanel">
+        <div class="progress-panel-head">
+          <div>
+            <p class="label">学习进度</p>
+            <h2>我的做题记录</h2>
+          </div>
+          <button class="ghost-btn small" id="clearHistoryBtn">
+            <svg><use href="#icon-trash"></use></svg>
+            <span>清空记录</span>
+          </button>
+        </div>
+        <div class="progress-grid">
+          <div class="progress-stat">
+            <strong id="historyAnswered">0</strong>
+            <span>已做</span>
+          </div>
+          <div class="progress-stat">
+            <strong id="historyCorrect">0</strong>
+            <span>答对</span>
+          </div>
+          <div class="progress-stat">
+            <strong id="historyAccuracy">0%</strong>
+            <span>正确率</span>
+          </div>
+          <div class="progress-stat">
+            <strong id="historyToday">0</strong>
+            <span>今日已做</span>
           </div>
         </div>
+        <div class="progress-bars" id="progressBars"></div>
+        <div class="session-list-wrap hidden" id="sessionListWrap">
+          <h3>最近练习</h3>
+          <div class="session-list" id="sessionList"></div>
+        </div>
+      </section>
 
         <div class="paper-list" id="paperList"></div>
 
@@ -139,7 +183,10 @@
           <div class="option-list" id="optionList"></div>
           <div class="answer-strip hidden" id="answerStrip">
             <div class="answer-result" id="answerResult"></div>
-            <div class="answer-text" id="answerText"></div>
+            <div class="answer-body">
+              <div class="answer-text" id="answerText"></div>
+              <div class="answer-explain" id="answerExplain"></div>
+            </div>
           </div>
         </article>
 
@@ -200,6 +247,26 @@
       <span>辐射安全考核试题 · 2022年1月版</span>
       <span>数据来自用户提供的两份 PDF 题库</span>
     </footer>
+
+    <div class="modal-mask hidden" id="authModal">
+      <div class="modal-card">
+        <button class="modal-close" id="authClose" aria-label="关闭">
+          <svg><use href="#icon-x"></use></svg>
+        </button>
+        <p class="label">账号</p>
+        <h2 id="authTitle">登录账号</h2>
+        <label class="auth-field">
+          <span>昵称</span>
+          <input id="authName" autocomplete="username" />
+        </label>
+        <label class="auth-field">
+          <span>密码</span>
+          <input id="authPass" type="password" autocomplete="current-password" />
+        </label>
+        <button class="solid-btn auth-submit" id="authSubmit">登录</button>
+        <button class="auth-switch" id="authSwitch">还没有账号？创建一个</button>
+      </div>
+    </div>
 
     <div class="toast" id="toast"></div>
 
