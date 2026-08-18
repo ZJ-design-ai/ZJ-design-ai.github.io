@@ -31,6 +31,7 @@ let authMode = "login";
 let currentUserName = localStorage.getItem(CURRENT_USER_KEY) || GUEST_NAME;
 
 let state = {
+  sid: 0,
   paper: "rad",
   chapter: "全部",
   mode: "order",
@@ -149,6 +150,52 @@ function saveSessions(sessions) {
   localStorage.setItem(sessionsKey(), JSON.stringify(sessions));
 }
 
+function buildResumeSnapshot() {
+  return {
+    sid: state.sid,
+    mode: state.mode,
+    paper: state.paper,
+    chapter: state.chapter,
+    sessionPaper: state.sessionPaper,
+    sessionChapter: state.sessionChapter,
+    list: state.list.map(qid),
+    index: state.index,
+    selected: [...state.selected],
+    confirmed: state.confirmed,
+    correct: state.correct,
+    wrongRun: state.wrongRun.map(qid),
+    elapsed: Math.max(0, Math.round((Date.now() - state.startTime) / 1000)),
+    examAnswers: state.examAnswers.map((a) => [...a]),
+    examSeconds: state.examSeconds,
+  };
+}
+
+function persistSessionState() {
+  if (!state.sid || !state.list || !state.list.length) return;
+  const sessions = loadSessions();
+  const idx = sessions.findIndex((s) => s.sid === state.sid && !s.finished);
+  const snapshot = buildResumeSnapshot();
+  const record = {
+    sid: state.sid,
+    mode: state.mode,
+    paper: state.sessionPaper,
+    chapter: state.sessionChapter,
+    total: state.list.length,
+    correct: state.correct,
+    wrong: state.wrongRun.length,
+    duration: snapshot.elapsed,
+    ts: Date.now(),
+    finished: false,
+    resume: snapshot,
+  };
+  if (idx >= 0) {
+    sessions[idx] = record;
+  } else {
+    sessions.unshift(record);
+  }
+  saveSessions(sessions.slice(0, 30));
+}
+
 function recordAnswer(q, ok) {
   const map = loadProgress();
   const id = qid(q);
@@ -163,7 +210,8 @@ function recordAnswer(q, ok) {
 
 function recordSession({ mode, paper, chapter, total, correct, wrong, duration }) {
   const sessions = loadSessions();
-  sessions.unshift({
+  const record = {
+    sid: state.sid,
     mode,
     paper,
     chapter,
@@ -172,7 +220,17 @@ function recordSession({ mode, paper, chapter, total, correct, wrong, duration }
     wrong,
     duration,
     ts: Date.now(),
-  });
+    finished: true,
+    resume: null,
+  };
+  const idx = state.sid
+    ? sessions.findIndex((s) => s.sid === state.sid && !s.finished)
+    : -1;
+  if (idx >= 0) {
+    sessions[idx] = record;
+  } else {
+    sessions.unshift(record);
+  }
   saveSessions(sessions.slice(0, 30));
 }
 
@@ -261,6 +319,7 @@ async function submitAuth() {
     users[name] = { hash, createdAt: Date.now() };
     saveUsers(users);
   }
+  persistSessionState();
   setCurrentUser(name);
   $("#authPass").value = "";
   closeAuth();
@@ -271,6 +330,7 @@ async function submitAuth() {
 }
 
 function logout() {
+  persistSessionState();
   setCurrentUser(GUEST_NAME);
   stopExamTimer();
   showView("home");
@@ -329,18 +389,38 @@ function renderProgress() {
     return;
   }
   wrap.classList.remove("hidden");
+  const resumeBtn = $("#resumeLastBtn");
+  const resumeTarget = sessions.find((s) => !s.finished && s.resume && s.resume.list);
+  if (resumeBtn) {
+    resumeBtn.classList.toggle("hidden", !resumeTarget);
+  }
   $("#sessionList").innerHTML = sessions
-    .map(
-      (s) => `
-      <div class="session-item">
+    .map((s, i) => {
+      const canResume = !s.finished && s.resume && s.resume.list;
+      const nextNo = canResume ? Math.min(s.resume.index + 1, s.total) : 0;
+      const scoreHtml = canResume
+        ? `<span class="session-continue">继续 · 第 ${nextNo} 题</span>`
+        : `${s.correct} / ${s.total} · ${formatTime(s.duration)}`;
+      return `
+      <button class="session-item ${canResume ? "session-resumable" : ""}" data-sid="${i}" ${canResume ? "" : "disabled"}>
         <div class="session-main">
           <strong>${escapeHtml(s.paper)} · ${escapeHtml(s.chapter)}</strong>
-          <span>${escapeHtml(modeName(s.mode))} · ${formatDateTime(s.ts)}</span>
+          <span>${escapeHtml(modeName(s.mode))} · ${formatDateTime(s.ts)}${canResume ? " · 进行中" : ""}</span>
         </div>
-        <div class="session-score">${s.correct} / ${s.total} · ${formatTime(s.duration)}</div>
-      </div>`
-    )
+        <div class="session-score">${scoreHtml}</div>
+      </button>`;
+    })
     .join("");
+  $$("#sessionList .session-item").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const s = sessions[Number(btn.dataset.sid)];
+      if (s && !s.finished && s.resume) {
+        resumeSession(s);
+      } else if (s && s.finished) {
+        toast("本次练习已完成");
+      }
+    });
+  });
 }
 
 function shuffle(arr) {
@@ -490,24 +570,60 @@ function startWrongReview() {
   beginSession({ mode: "wrong", list });
 }
 
-function beginSession({ mode, list }) {
+function resumeSession(session) {
+  const resume = session && session.resume;
+  if (!resume || !resume.list || !resume.list.length) {
+    toast("没有可继续的进度");
+    return;
+  }
+  const list = resume.list.map((id) => QUESTION_MAP.get(id)).filter(Boolean);
+  if (!list.length) {
+    toast("题目数据不存在，无法继续");
+    return;
+  }
+  beginSession({ mode: resume.mode || session.mode, list, resume });
+  toast(`已回到第 ${state.index + 1} 题`);
+}
+
+function beginSession({ mode, list, resume }) {
   stopExamTimer();
-  state.mode = mode;
-  state.list = list;
-  state.index = 0;
-  state.selected = [];
-  state.confirmed = false;
-  state.correct = 0;
-  state.wrongRun = [];
-  state.startTime = Date.now();
-  state.elapsed = 0;
-  state.examAnswers = mode === "exam" ? list.map(() => []) : [];
-  state.sessionPaper =
-    mode === "wrong" ? "错题本" : PAPERS[state.paper] ? PAPERS[state.paper].title : "辐射安全管理";
-  state.sessionChapter = mode === "wrong" ? "错题" : state.chapter || "全部";
+  if (resume) {
+    state.sid = resume.sid || Date.now();
+    state.mode = resume.mode || mode;
+    state.paper = resume.paper || "rad";
+    state.chapter = resume.chapter || "全部";
+    state.list = (resume.list || []).map((id) => QUESTION_MAP.get(id)).filter(Boolean);
+    state.index = Math.min(resume.index || 0, Math.max(0, state.list.length - 1));
+    state.selected = resume.selected || [];
+    state.confirmed = !!resume.confirmed;
+    state.correct = resume.correct || 0;
+    state.wrongRun = (resume.wrongRun || []).map((id) => QUESTION_MAP.get(id)).filter(Boolean);
+    state.elapsed = resume.elapsed || 0;
+    state.examAnswers = resume.examAnswers || [];
+    state.examSeconds = resume.examSeconds || 20 * 60;
+    state.startTime = Date.now() - state.elapsed * 1000;
+    state.sessionPaper = resume.sessionPaper || "辐射安全管理";
+    state.sessionChapter = resume.sessionChapter || "全部";
+  } else {
+    state.sid = Date.now();
+    state.mode = mode;
+    state.list = list;
+    state.index = 0;
+    state.selected = [];
+    state.confirmed = false;
+    state.correct = 0;
+    state.wrongRun = [];
+    state.startTime = Date.now();
+    state.elapsed = 0;
+    state.examAnswers = mode === "exam" ? list.map(() => []) : [];
+    state.examSeconds = 20 * 60;
+    state.sessionPaper =
+      mode === "wrong" ? "错题本" : PAPERS[state.paper] ? PAPERS[state.paper].title : "辐射安全管理";
+    state.sessionChapter = mode === "wrong" ? "错题" : state.chapter || "全部";
+  }
   showView("quiz");
   if (mode === "exam") {
-    startExamTimer();
+    startExamTimer(state.examSeconds);
   }
   renderQuestion();
 }
@@ -534,6 +650,7 @@ function renderQuestion() {
   if (state.mode === "wrong") {
     showReviewExplanation(q);
   }
+  persistSessionState();
 }
 
 function renderFigures(q) {
@@ -733,6 +850,7 @@ function confirmAnswer() {
   renderExplanation(q, selected, ok);
   strip.classList.remove("hidden");
   renderActionButtons();
+  persistSessionState();
 }
 
 function nextQuestion() {
@@ -854,8 +972,8 @@ function formatTime(seconds) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function startExamTimer() {
-  state.examSeconds = 20 * 60;
+function startExamTimer(seconds) {
+  state.examSeconds = seconds || 20 * 60;
   renderClock();
   $("#examClock").classList.remove("hidden");
   state.examTimer = setInterval(() => {
@@ -910,12 +1028,14 @@ $("#submitBtn").addEventListener("click", submitExam);
 $("#retryBtn").addEventListener("click", retrySession);
 $("#homeBtn").addEventListener("click", () => {
   stopExamTimer();
+  persistSessionState();
   showView("home");
   renderHome();
 });
 $("#homeLink").addEventListener("click", (e) => {
   e.preventDefault();
   stopExamTimer();
+  persistSessionState();
   showView("home");
   renderHome();
 });
@@ -926,6 +1046,7 @@ $("#clearWrongBtn").addEventListener("click", () => {
 });
 $("#wrongBookBtn").addEventListener("click", () => {
   stopExamTimer();
+  persistSessionState();
   showView("home");
   renderHome();
   document.querySelector("#wrongPanel").scrollIntoView({ behavior: "smooth" });
@@ -950,5 +1071,10 @@ $("#authPass").addEventListener("keydown", (e) => {
   if (e.key === "Enter") submitAuth();
 });
 $("#clearHistoryBtn").addEventListener("click", clearHistory);
+$("#resumeLastBtn").addEventListener("click", () => {
+  const sessions = loadSessions();
+  const target = sessions.find((s) => !s.finished && s.resume && s.resume.list);
+  if (target) resumeSession(target);
+});
 
 renderHome();
