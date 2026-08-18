@@ -326,8 +326,16 @@ main {
   padding-top: 16px;
 }
 
-.session-list-wrap h3 {
-  margin: 0 0 12px;
+.session-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.session-list-head h3 {
+  margin: 0;
   font-size: 15px;
 }
 
@@ -346,6 +354,20 @@ main {
   border-radius: 4px;
   background: #fbfcf9;
   font-size: 13px;
+  width: 100%;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.session-item:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.session-item.session-resumable {
+  border-color: var(--amber);
+  box-shadow: inset 3px 0 0 var(--amber);
 }
 
 .session-main {
@@ -370,6 +392,11 @@ main {
   flex: none;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+.session-continue {
+  color: #8a6410;
+  font-weight: 600;
 }
 
 .paper-list {
